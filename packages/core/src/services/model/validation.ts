@@ -128,6 +128,36 @@ function validateSingleParameter(
     return { isValid: true };
   }
 
+  // Special validation: thinking should be a JSON object
+  if (def.name === 'thinking') {
+    if (typeof value === 'string') {
+      // If it's a string, try to parse as JSON
+      try {
+        const parsed = JSON.parse(value);
+        if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+          return { isValid: true };
+        } else {
+          return {
+            isValid: false,
+            message: `Parameter 'thinking' should be a JSON object, but parsed value is not an object`
+          };
+        }
+      } catch (error) {
+        return {
+          isValid: false,
+          message: `Parameter 'thinking' should be a JSON object, but received invalid JSON string`
+        };
+      }
+    } else if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+      return { isValid: true };
+    } else {
+      return {
+        isValid: false,
+        message: `Parameter 'thinking' should be a JSON object, but received ${typeof value}`
+      };
+    }
+  }
+
   // Type validation
   if (!validateType(value, def.type)) {
     return {
@@ -166,6 +196,8 @@ function validateType(value: any, expectedType: string): boolean {
       return typeof value === 'string';
     case 'boolean':
       return typeof value === 'boolean';
+    case 'json':
+      return typeof value === 'object' && value !== null && !Array.isArray(value);
     default:
       return true;
   }

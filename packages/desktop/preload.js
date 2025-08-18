@@ -51,6 +51,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // High-level LLM service interface
   llm: {
+    // Check if provider supports multimodal
+    supportsMultimodal: async (provider) => {
+      const result = await ipcRenderer.invoke('llm-supportsMultimodal', provider);
+      if (!result.success) {
+        throw new Error(result.error);
+      }
+      return result.data;
+    },
+
     // Test connection to a provider
     testConnection: async (provider) => {
       const result = await ipcRenderer.invoke('llm-testConnection', provider);
@@ -88,9 +97,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
 
     // Send streaming message
-    sendMessageStream: async (messages, provider, callbacks) => {
+    sendMessageStream: async (messages, provider, callbacks, signal) => {
       const streamId = generateStreamId();
-      
+
       // Set up event listeners for streaming responses
       const contentListener = (event, content) => {
         if (callbacks.onContent) callbacks.onContent(content);
@@ -120,6 +129,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.on(`stream-thinking-${streamId}`, thinkingListener);
       ipcRenderer.on(`stream-finish-${streamId}`, finishListener);
       ipcRenderer.on(`stream-error-${streamId}`, errorListener);
+
+      // If there's an abort signal, set up abort handler
+      if (signal) {
+        signal.addEventListener('abort', () => {
+          cleanup();
+          // Notify main process to abort the stream
+          ipcRenderer.invoke('llm-abortStream', streamId).catch(err => {
+            console.warn('Failed to abort stream:', err);
+          });
+        });
+      }
 
       // Send the streaming request
       try {
@@ -499,8 +519,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
         throw new Error(result.error);
       }
     },
-    testPromptStream: async (systemPrompt, userPrompt, modelKey, streamId) => {
-      const result = await ipcRenderer.invoke('prompt-testPromptStream', systemPrompt, userPrompt, modelKey, streamId);
+    testPromptStream: async (systemPrompt, userPrompt, modelKey, streamId, images) => {
+      const result = await ipcRenderer.invoke('prompt-testPromptStream', systemPrompt, userPrompt, modelKey, streamId, images);
       if (!result.success) {
         throw new Error(result.error);
       }
@@ -567,6 +587,108 @@ contextBridge.exposeInMainWorld('electronAPI', {
         throw new Error(result.error);
       }
     }
+  },
+
+  // Settings Manager interface
+  settings: {
+    // Save setting
+    saveSetting: async (setting) => {
+      const result = await ipcRenderer.invoke('settings-saveSetting', setting);
+      if (!result.success) {
+        throw new Error(result.error);
+      }
+      return result.data;
+    },
+
+    // Get all settings
+    getSettings: async () => {
+      const result = await ipcRenderer.invoke('settings-getSettings');
+      if (!result.success) {
+        throw new Error(result.error);
+      }
+      return result.data;
+    },
+
+    // Get single setting
+    getSetting: async () => {
+      const result = await ipcRenderer.invoke('settings-getSetting');
+      if (!result.success) {
+        throw new Error(result.error);
+      }
+      return result.data;
+    },
+
+    // Update setting
+    updateSetting: async (updates) => {
+      const result = await ipcRenderer.invoke('settings-updateSetting', updates);
+      if (!result.success) {
+        throw new Error(result.error);
+      }
+      return result.data;
+    },
+
+    // Test setting
+    testSetting: async () => {
+      const result = await ipcRenderer.invoke('settings-testSetting');
+      if (!result.success) {
+        throw new Error(result.error);
+      }
+      return result.data;
+    },
+
+    // Get default setting
+    getDefaultSetting: async () => {
+      const result = await ipcRenderer.invoke('settings-getDefaultSetting');
+      if (!result.success) {
+        throw new Error(result.error);
+      }
+      return result.data;
+    },
+
+    // Reset to default
+    resetToDefault: async () => {
+      const result = await ipcRenderer.invoke('settings-resetToDefault');
+      if (!result.success) {
+        throw new Error(result.error);
+      }
+      return result.data;
+    },
+
+    // Export settings data
+    exportData: async () => {
+      const result = await ipcRenderer.invoke('settings-exportData');
+      if (!result.success) {
+        throw new Error(result.error);
+      }
+      return result.data;
+    },
+
+    // Import settings data
+    importData: async (data) => {
+      const result = await ipcRenderer.invoke('settings-importData', data);
+      if (!result.success) {
+        throw new Error(result.error);
+      }
+      return result.data;
+    },
+
+    // Get data type identifier
+    getDataType: async () => {
+      const result = await ipcRenderer.invoke('settings-getDataType');
+      if (!result.success) {
+        throw new Error(result.error);
+      }
+      return result.data;
+    },
+
+    // Validate data format
+    validateData: async (data) => {
+      const result = await ipcRenderer.invoke('settings-validateData', data);
+      if (!result.success) {
+        throw new Error(result.error);
+      }
+      return result.data;
+    },
   },
 
   // Add an identifier so the frontend knows it's running in Electron

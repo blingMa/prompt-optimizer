@@ -342,7 +342,9 @@ export default {
     model: 'Model',
     startTest: 'Start Test →',
     startCompare: 'Start Compare Test →',
+    stopTest: 'Stop',
     testing: 'Testing...',
+    stopped: 'Test stopped',
     toggleCompare: {
       enable: 'Enable Compare',
       disable: 'Disable Compare'
@@ -351,6 +353,7 @@ export default {
     optimizedResult: 'Optimized Prompt Result',
     testResult: 'Test Result',
     userPromptTest: 'User Prompt Test',
+    attachedImages: 'Attached Images',
     error: {
       failed: 'Test Failed',
       noModel: 'Please select a test model first',
@@ -358,7 +361,12 @@ export default {
     },
     enableMarkdown: 'Enable Markdown rendering',
     disableMarkdown: 'Disable Markdown rendering',
-    thinking: 'Thinking Process'
+    thinking: 'Thinking Process',
+    tokensTooltip: 'This test consumed {tokens} tokens\nInput: {inputTokens} tokens\nOutput: {outputTokens} tokens',
+    inputTokens: 'Input',
+    outputTokens: 'Output',
+    totalTokens: 'Total',
+    tokens: 'tokens'
   },
   template: {
     noDescription: 'No Description',
@@ -581,6 +589,10 @@ export default {
       "label": "Stop Sequences",
       "description": "Custom strings that will stop output generation if encountered. Specify multiple sequences separated by commas."
     },
+    "thinking": {
+      "label": "Thinking Control",
+      "description": "Controls whether the model shows its thinking process. auto: automatic decision, enabled: enable, disabled: disable"
+    },
     "tokens": {
       "unit": "tokens"
     }
@@ -645,5 +657,45 @@ export default {
     viewOnGitHub: 'View on GitHub',
     noReleasesFound: 'No releases found. This project may not have published any versions yet.',
     noStableReleasesFound: 'No stable releases found. Only prerelease versions may be available.'
+  },
+  upload: {
+    dragDrop: 'Drag images here or click to upload',
+    orClick: 'or click to select files',
+    uploading: 'Uploading',
+    success: 'File {fileName} uploaded successfully',
+    failed: 'File {fileName} upload failed: {error}',
+    invalidType: 'File {fileName} format not supported',
+    fileTooLarge: 'File {fileName} exceeds size limit',
+    tooManyFiles: 'Maximum {max} files can be uploaded',
+    serviceNotInitialized: 'Upload service not initialized',
+    copyUrl: 'Copy URL',
+    delete: 'Delete',
+    urlCopied: 'URL copied to clipboard',
+    copyFailed: 'Copy failed',
+    deleteSuccess: 'File {fileName} deleted successfully',
+    deleteFailed: 'File {fileName} deletion failed'
+  },
+  uploadSettings: {
+    title: 'Settings',
+    ossConfig: 'OSS Configuration',
+    region: 'Region',
+    regionPlaceholder: 'Enter OSS region, e.g.: oss-cn-hangzhou',
+    accessKeyId: 'Access Key ID',
+    accessKeyIdPlaceholder: 'Enter AccessKey ID',
+    accessKeySecret: 'Access Key Secret',
+    accessKeySecretPlaceholder: 'Enter AccessKey Secret',
+    bucket: 'Bucket',
+    bucketPlaceholder: 'Enter bucket name',
+    endpoint: 'Endpoint',
+    endpointPlaceholder: 'Enter endpoint address e.g.: https://oss-cn-hangzhou.aliyuncs.com',
+    secure: 'Use HTTPS',
+    cname: 'Use Custom Domain',
+    requiredFields: 'Please fill in all required fields',
+    test: 'Test Connection',
+    testing: 'Testing...',
+    testSuccess: 'Connection test successful',
+    testFailed: 'Connection test failed: {error}',
+    saveSuccess: 'Settings saved successfully',
+    reinitFailed: 'Failed to reinitialize upload service'
   }
 };

@@ -1,5 +1,5 @@
 import { IPromptService, OptimizationRequest } from './types';
-import { Message, StreamHandlers, ILLMService } from '../llm/types';
+import { Message, StreamHandlers, ILLMService, MessageContent } from '../llm/types';
 import { PromptRecord } from '../history/types';
 import { IModelManager } from '../model/types';
 import { ITemplateManager } from '../template/types';
@@ -226,13 +226,15 @@ export class PromptService implements IPromptService {
   }
 
   /**
-   * 测试提示词（流式）- 支持可选系统提示词
+   * 测试提示词（流式）- 支持可选系统提示词和中断信号
    */
   async testPromptStream(
     systemPrompt: string,
     userPrompt: string,
     modelKey: string,
-    callbacks: StreamHandlers
+    callbacks: StreamHandlers,
+    images?: { url: string; name?: string }[],
+    signal?: AbortSignal
   ): Promise<void> {
     try {
       // 对于用户提示词优化，systemPrompt 可以为空
@@ -255,15 +257,37 @@ export class PromptService implements IPromptService {
         messages.push({ role: 'system', content: systemPrompt });
       }
 
-      messages.push({ role: 'user', content: userPrompt });
-
+      // 构建用户消息，支持图片
+      if (images && images.length > 0) {
+        // 构建多模态消息
+        const content: MessageContent[] = [
+          { type: 'text', text: userPrompt },
+          ...images.map(image => ({
+            type: 'image_url' as const,
+            image_url: { url: image.url }
+          }))
+        ];
+        messages.push({ role: 'user', content: content});
+      } else {
+        // 纯文本消息
+        messages.push({ role: 'user', content: userPrompt });
+      }
       // 使用新的结构化流式响应
       await this.llmService.sendMessageStream(messages, modelKey, {
-        onToken: callbacks.onToken,
-        onReasoningToken: callbacks.onReasoningToken, // 支持推理内容流
+        onToken: (token) => {
+          if (signal?.aborted) return
+          callbacks.onToken(token)
+        },
+        onReasoningToken: (reasoningToken) => {
+          if (signal?.aborted) return
+          callbacks.onReasoningToken?.(reasoningToken)
+        },
         onComplete: callbacks.onComplete,
-        onError: callbacks.onError
-      });
+        onError: (error) => {
+          if (signal?.aborted) return
+          callbacks.onError(error)
+        }
+      }, signal);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       throw new TestError(`Test failed: ${errorMessage}`, systemPrompt, userPrompt);
@@ -385,7 +409,7 @@ export class PromptService implements IPromptService {
               // 验证迭代结果
               this.validateResponse(response.content, lastOptimizedPrompt);
             }
-            
+
             // 调用原始完成回调，传递结构化响应
             // 注意：迭代历史记录由UI层的historyManager.addIteration方法处理
             handlers.onComplete(response);
@@ -475,7 +499,7 @@ export class PromptService implements IPromptService {
   // 1. 迭代需要现有的chainId，这个信息由UI层的状态管理器维护
   // 2. 迭代与用户交互紧密结合，需要实时更新UI状态
   // 3. 版本管理逻辑在UI层更容易处理
-  // 
+  //
   // 相比之下，优化操作会创建新的链，所以可以在核心层处理
   // 这种混合架构是经过权衡的设计决策
 }

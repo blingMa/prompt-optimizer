@@ -7,7 +7,11 @@ import { IStorageProvider } from './types';
 export class StorageAdapter implements IStorageProvider {
   private locks: Map<string, Promise<void>> = new Map();
 
-  constructor(private readonly baseProvider: IStorageProvider) {}
+  constructor(private readonly baseProvider: IStorageProvider) {
+    if (!baseProvider) {
+      throw new Error('StorageAdapter requires a valid storage provider');
+    }
+  }
 
   // 基础方法直接代理
   async getItem(key: string): Promise<string | null> {

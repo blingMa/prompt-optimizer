@@ -27,7 +27,7 @@
           @click="historyManager.showHistory = true"
         />
         <ActionButtonUI
-          icon="⚙️"
+          icon="🧠"
           :text="$t('nav.modelManager')"
           @click="modelManager.showConfig = true"
         />
@@ -35,6 +35,11 @@
           icon="💾"
           :text="$t('nav.dataManager')"
           @click="showDataManager = true"
+        />
+        <ActionButtonUI
+          icon="⚙️"
+          :text="$t('common.settings')"
+          @click="showSettings = true"
         />
         <!-- 自动更新组件 - 仅在Electron环境中显示 -->
         <UpdaterIcon />
@@ -127,11 +132,13 @@
         ref="testPanelRef"
         class="flex-1 min-w-0 flex flex-col"
         :prompt-service="promptService"
+        :upload-service="uploadService"
         :original-prompt="optimizer.prompt"
         :optimized-prompt="optimizer.optimizedPrompt"
         :optimization-mode="selectedOptimizationMode"
         v-model="modelManager.selectedTestModel"
         @showConfig="modelManager.showConfig = true"
+        @images-change="handleImagesChange"
       />
     </MainLayoutUI>
 
@@ -153,19 +160,30 @@
       @deleteChain="promptHistory.handleDeleteChain"
     />
     <DataManagerUI v-if="isReady" v-model:show="showDataManager" @imported="handleDataImported" />
+    
+    <!-- 系统设置弹窗 -->
+    <SettingsModalUI
+      v-if="isReady"
+      v-model="showSettings"
+      :settings-manager="settingsManager"
+      :upload-service="uploadService"
+      @save="handleSettingsSave"
+      @test="handleSettingsTest"
+      @reinitialized="handleSettingsReinitialized"
+    />
 
     <!-- ToastUI已在MainLayoutUI中包含，无需重复渲染 -->
   </template>
 </template>
 
 <script setup lang="ts">
-import { ref, watch, provide, computed, shallowRef, toRef } from 'vue'
+import { ref, watch, provide, computed, shallowRef, toRef, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {
   // UI Components
   MainLayoutUI, ThemeToggleUI, ActionButtonUI, ModelManagerUI, TemplateManagerUI, HistoryDrawerUI,
   LanguageSwitchUI, DataManagerUI, InputPanelUI, PromptPanelUI, OptimizationModeSelectorUI,
-  ModelSelectUI, TemplateSelectUI, ContentCardUI, ToastUI, TestPanelUI, UpdaterIcon,
+  ModelSelectUI, TemplateSelectUI, ContentCardUI, ToastUI, TestPanelUI, UpdaterIcon, SettingsModalUI,
 
   // Composables
   usePromptOptimizer,
@@ -186,7 +204,8 @@ import {
   // 从UI包导入DataManager类型
   DataManager,
 } from '@prompt-optimizer/ui'
-import type { IPromptService } from '@prompt-optimizer/core'
+import {createSettingsManager, IPromptService, StorageFactory, ElectronSettingsManagerProxy} from '@prompt-optimizer/core'
+import { UploadService, createUploadService, SettingsManager } from '@prompt-optimizer/core'
 // 导入AppServices类型
 import type { AppServices } from '../node_modules/@prompt-optimizer/ui/src/types/services'
 
@@ -217,8 +236,11 @@ const isReady = computed(() => services.value !== null && !isInitializing.value)
 
 // 6. 创建所有必要的引用
 const promptService = shallowRef<IPromptService | null>(null)
+const uploadService = shallowRef<UploadService | null>(null)
+const settingsManager = shallowRef<SettingsManager | null>(null)
 const selectedOptimizationMode = ref<OptimizationMode>('system')
 const showDataManager = ref(false)
+const showSettings = ref(false)
 const optimizeModelSelect = ref(null)
 const testPanelRef = ref(null)
 const templateSelectRef = ref<{ refresh?: () => void } | null>(null)
@@ -288,10 +310,37 @@ const templateManagerState = useTemplateManager(
 
 // 7. 监听服务初始化
 watch(services, (newServices) => {
+  console.log('Services watch triggered, newServices:', newServices)
   if (!newServices) return
-
+  
   // 设置服务引用
   promptService.value = newServices.promptService
+
+  // 初始化设置管理器
+  try {
+    // 检查是否在Electron环境中
+    if (typeof window !== 'undefined' && window.electronAPI) {
+      console.log('[App] Using ElectronSettingsManagerProxy for desktop environment')
+      settingsManager.value = new ElectronSettingsManagerProxy()
+    } else {
+      console.log('[App] Using regular settings manager for web environment')
+      const storageProvider = StorageFactory.create('localStorage')
+      settingsManager.value = createSettingsManager(storageProvider)
+    }
+    console.log('Settings manager initialized successfully')
+  } catch (error) {
+    console.error('Failed to initialize settings manager:', error)
+  }
+
+  // 初始化上传服务 - 通过 settings manager 获取 OSS 配置
+  try {
+    if (settingsManager.value) {
+      uploadService.value = createUploadService(settingsManager.value)
+      console.log('Upload service initialized successfully via settings manager')
+    }
+  } catch (error) {
+    console.error('Failed to initialize upload service:', error)
+  }
 
   console.log('All services and composables initialized.')
 })
@@ -307,6 +356,78 @@ const handleDataImported = () => {
   setTimeout(() => {
     window.location.reload()
   }, 1500)
+}
+
+// 9. 处理系统设置保存
+const handleSettingsSave = async (config) => {
+  console.log('[App] 保存OSS配置:', config)
+  
+  // 通过 settings manager 保存配置
+  try {
+    if (settingsManager.value) {
+      await settingsManager.value.updateSetting(config)
+      console.log('OSS configuration saved successfully')
+      
+      // 重新初始化现有的uploadService以加载新配置
+      if (uploadService.value) {
+        const reinitialized = await uploadService.value.reinitialize()
+        if (reinitialized) {
+          console.log('Upload service reinitialized with new configuration')
+        } else {
+          console.warn('Failed to reinitialize upload service, creating new instance')
+          uploadService.value = createUploadService(settingsManager.value)
+        }
+      } else {
+        // 如果uploadService不存在，创建新的实例
+        uploadService.value = createUploadService(settingsManager.value)
+        console.log('Upload service created with new configuration')
+      }
+    }
+  } catch (error) {
+    console.error('Failed to save OSS configuration:', error)
+  }
+}
+
+// 10. 处理系统设置测试
+const handleSettingsTest = async () => {
+  console.log('[App] 测试OSS配置')
+  
+  // 通过 settings manager 测试配置
+  try {
+    if (settingsManager.value) {
+      const result = await settingsManager.value.testSetting()
+      if (result) {
+        toast.success(t('settings.testSuccess'))
+      } else {
+        toast.error(t('settings.testFailed'))
+      }
+    }
+  } catch (error) {
+    console.error('Failed to test OSS configuration:', error)
+    toast.error(t('settings.testError'))
+  }
+}
+
+// 11. 处理系统设置重新初始化
+const handleSettingsReinitialized = () => {
+  console.log('[App] Upload service reinitialized, checking initialization state...')
+  
+  // 强制触发响应式更新，通过创建一个新的引用来确保Vue能检测到变化
+  if (uploadService.value) {
+    const currentService = uploadService.value
+    console.log('[App] Current upload service state:', {
+      hasService: !!currentService,
+      isInitialized: currentService.isInitialized(),
+      config: currentService.getConfig()
+    })
+    
+    // 强制更新响应式引用
+    uploadService.value = null
+    nextTick(() => {
+      uploadService.value = currentService
+      console.log('[App] Upload service reference updated to trigger reactivity')
+    })
+  }
 }
 
 // 8. 计算属性和方法
@@ -370,6 +491,12 @@ const openTemplateManager = (templateType?: 'optimize' | 'userOptimize' | 'itera
 // 处理优化模式变更
 const handleOptimizationModeChange = (mode: OptimizationMode) => {
   selectedOptimizationMode.value = mode
+}
+
+// 处理图片变化
+const handleImagesChange = (images: any[]) => {
+  console.log('Images changed:', images)
+  // 可以在这里保存图片信息到状态或进行其他处理
 }
 
 // 处理模板语言变化

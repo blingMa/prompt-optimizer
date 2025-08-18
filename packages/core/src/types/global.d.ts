@@ -1,4 +1,5 @@
 interface Window {
+  AbortSignal: typeof AbortSignal;
   runtime_config?: {
     OPENAI_API_KEY?: string;
     GEMINI_API_KEY?: string;
@@ -11,8 +12,24 @@ interface Window {
     [key: string]: string | undefined;
   };
   electronAPI?: {
+    prompt: {
+      testPromptStream: (
+        systemPrompt: string,
+        userPrompt: string,
+        modelKey: string,
+        callbacks: {
+          onToken: (token: string) => void;
+          onReasoningToken?: (token: string) => void;
+          onComplete: () => void;
+          onError: (error: Error) => void;
+        },
+        images?: { url: string; name?: string }[],
+        signal?: AbortSignal
+      ) => Promise<void>;
+    };
     llm: {
       // Define the methods for the LLM API proxy
+      supportsMultimodal: (provider: string) => Promise<boolean>;
       sendMessage: (messages: any[], provider: string) => Promise<string>;
       sendMessageStructured: (messages: any[], provider: string) => Promise<any>;
       sendMessageStream: (
@@ -23,11 +40,25 @@ interface Window {
           onThinking?: (thinking: string) => void;
           onFinish?: () => void;
           onError?: (error: Error) => void;
-        }
+        },
+        signal?: AbortSignal
       ) => Promise<void>;
       testConnection: (provider: string) => Promise<void>;
       fetchModelList: (provider: string, customConfig?: any) => Promise<Array<{value: string, label: string}>>;
     };
+    settings: {
+      getSettings: () => Promise<any>;
+      saveSetting: (setting: any) => Promise<void>;
+      updateSetting: (updates: any) => Promise<void>;
+      resetToDefault: () => Promise<void>;
+      getDefaultSetting: () => Promise<any>;
+      exportData: () => Promise<any>;
+      importData: (data: any) => Promise<void>;
+      getSetting: () => Promise<any>;
+      testSetting: () => Promise<boolean>;
+      getDataType: () => Promise<string>;
+      validateData: (data: any) => Promise<boolean>;
+    }
     model: {
       getModels: () => Promise<any[]>;
       addModel: (model: any) => Promise<void>;

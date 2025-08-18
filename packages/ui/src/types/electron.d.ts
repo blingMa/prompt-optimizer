@@ -68,6 +68,37 @@ interface ShellAPI {
   showItemInFolder(path: string): Promise<void>
 }
 
+// LLM相关API - 用于渲染进程调用主进程的LLM服务
+interface LLMAPI {
+  supportsMultimodal(provider: string): Promise<boolean>
+  testConnection(provider: string): Promise<void>
+  sendMessage(messages: any[], provider: string): Promise<string>
+  sendMessageStructured(messages: any[], provider: string): Promise<any>
+  sendMessageStream(messages: any[], provider: string, callbacks: {
+    onContent: (content: string) => void
+    onThinking: (thinking: string) => void
+    onFinish: () => void
+    onError: (error: Error) => void
+  }, signal?: AbortSignal): Promise<void>
+  fetchModelList(provider: string, customConfig?: any): Promise<any[]>
+}
+
+// Settings相关API
+interface SettingsAPI {
+  saveSetting(setting: any): Promise<void>
+  getSettings(): Promise<any[]>
+  getSetting(): Promise<any>
+  updateSetting(updates: any): Promise<void>
+  testSetting(): Promise<boolean>
+  getDefaultSetting(): Promise<any>
+  resetToDefault(): Promise<void>
+  exportData(): Promise<any[]>
+  importData(data: any): Promise<void>
+  getDataType(): Promise<string>
+  validateData(data: any): Promise<boolean>
+}
+
+
 // 事件监听API
 interface EventAPI {
   on(channel: string, listener: (...args: any[]) => void): void
@@ -80,6 +111,8 @@ interface ElectronAPI {
   app: AppAPI
   updater: UpdaterAPI
   shell: ShellAPI
+  llm: LLMAPI
+  settings: SettingsAPI
   on: EventAPI['on']
   off: EventAPI['off']
   once: EventAPI['once']
@@ -137,6 +170,8 @@ export type {
   AppAPI,
   UpdaterAPI,
   ShellAPI,
+  LLMAPI,
+  SettingsAPI,
   EventAPI,
   ElectronAPI,
   DownloadProgress,

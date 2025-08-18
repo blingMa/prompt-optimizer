@@ -5,11 +5,18 @@ import { ModelConfig } from '../model/types';
 export type MessageRole = 'system' | 'user' | 'assistant';
 
 /**
- * 消息类型
+ * 消息内容类型
+ */
+export type MessageContent = 
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string } };
+
+/**
+ * 消息类型 - 支持多模态内容
  */
 export interface Message {
   role: 'system' | 'user' | 'assistant';
-  content: string;
+  content: string | MessageContent[];
 }
 
 /**
@@ -21,6 +28,8 @@ export interface LLMResponse {
   metadata?: {
     model?: string;
     tokens?: number;
+    inputTokens?: number;
+    outputTokens?: number;
     finishReason?: string;
   };
 }
@@ -88,8 +97,14 @@ export interface ILLMService {
   sendMessageStream(
     messages: Message[],
     provider: string,
-    callbacks: StreamHandlers
+    callbacks: StreamHandlers,
+    signal?: AbortSignal
   ): Promise<void>;
+
+  /**
+   * 检查提供商是否支持多模态
+   */
+  supportsMultimodal(provider: string): Promise<boolean>;
 
   /**
    * 测试连接

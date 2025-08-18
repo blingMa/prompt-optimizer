@@ -1,4 +1,4 @@
-import { ILLMService, Message, StreamHandlers, LLMResponse, ModelInfo, ModelOption } from './types';
+import { ILLMService, Message, StreamHandlers, LLMResponse, ModelInfo, ModelOption, MessageContent } from './types';
 import { ModelConfig } from '../model/types';
 import { ModelManager } from '../model/manager';
 import { APIError, RequestConfigError } from './errors';
@@ -6,12 +6,61 @@ import OpenAI from 'openai';
 import { GoogleGenerativeAI, GenerativeModel } from '@google/generative-ai';
 import { isVercel, getProxyUrl, isRunningInElectron } from '../../utils/environment';
 import { ElectronLLMProxy } from './electron-proxy';
+import { advancedParameterDefinitions } from '../model/advancedParameterDefinitions';
+import { encodingForModel } from 'js-tiktoken';
 
 /**
  * LLM服务实现 - 基于官方SDK
  */
 export class LLMService implements ILLMService {
-  constructor(private modelManager: ModelManager) { }
+  private tiktoken: any;
+  
+  constructor(private modelManager: ModelManager) {
+    // 初始化 token 计算器，使用 cl100k_base 编码（适用于大多数 OpenAI 模型）
+    this.tiktoken = encodingForModel('gpt-4');
+  }
+
+  /**
+   * 计算 token 数量
+   */
+  private calculateTokens(text: string): number {
+    if (!text) return 0;
+    return this.tiktoken.encode(text).length;
+  }
+
+  /**
+   * 计算消息的 token 数量
+   */
+  private calculateMessageTokens(message: Message): number {
+    let tokens = 0;
+    
+    // 角色名的 token 消耗（大约 4-5 个 tokens）
+    tokens += 4; // role overhead
+    
+    if (typeof message.content === 'string') {
+      tokens += this.calculateTokens(message.content);
+    } else if (Array.isArray(message.content)) {
+      // 多模态内容
+      message.content.forEach(item => {
+        if (item.type === 'text') {
+          tokens += this.calculateTokens(item.text);
+        } else if (item.type === 'image_url') {
+          // 图片的 token 计算比较复杂，这里使用一个估算值
+          // 实际上图片 tokens 取决于图片大小和分辨率
+          tokens += 765; // 这是一个中等分辨率图片的估算值
+        }
+      });
+    }
+    
+    return tokens;
+  }
+
+  /**
+   * 计算所有消息的总 token 数量（输入 tokens）
+   */
+  private calculateInputTokens(messages: Message[]): number {
+    return messages.reduce((total, message) => total + this.calculateMessageTokens(message), 0);
+  }
 
   /**
    * 验证消息格式
@@ -30,8 +79,25 @@ export class LLMService implements ILLMService {
       if (!['system', 'user', 'assistant'].includes(msg.role)) {
         throw new RequestConfigError(`不支持的消息类型: ${msg.role}`);
       }
-      if (typeof msg.content !== 'string') {
-        throw new RequestConfigError('消息内容必须是字符串');
+      
+      // 验证内容格式
+      if (typeof msg.content === 'string') {
+        // 字符串内容，有效
+      } else if (Array.isArray(msg.content)) {
+        // 多模态内容数组
+        msg.content.forEach((item, index) => {
+          if (!item.type) {
+            throw new RequestConfigError(`消息内容项 ${index + 1} 缺少类型字段`);
+          }
+          if (item.type === 'text' && typeof item.text !== 'string') {
+            throw new RequestConfigError(`消息内容项 ${index + 1} 文本内容必须是字符串`);
+          }
+          if (item.type === 'image_url' && (!item.image_url || !item.image_url.url)) {
+            throw new RequestConfigError(`消息内容项 ${index + 1} 图片URL无效`);
+          }
+        });
+      } else {
+        throw new RequestConfigError('消息内容必须是字符串或多模态内容数组');
       }
     });
   }
@@ -139,10 +205,32 @@ export class LLMService implements ILLMService {
   private async sendOpenAIMessageStructured(messages: Message[], modelConfig: ModelConfig): Promise<LLMResponse> {
     const openai = this.getOpenAIInstance(modelConfig);
 
-    const formattedMessages = messages.map(msg => ({
-      role: msg.role,
-      content: msg.content
-    }));
+    const formattedMessages = messages.map(msg => {
+      if (typeof msg.content === 'string') {
+        return {
+          role: msg.role,
+          content: msg.content
+        };
+      } else if (Array.isArray(msg.content)) {
+        // 多模态内容，OpenAI格式
+        return {
+          role: msg.role,
+          content: msg.content.map(item => {
+            if (item.type === 'text') {
+              return { type: 'text', text: item.text };
+            } else if (item.type === 'image_url') {
+              return { type: 'image_url', image_url: { url: item.image_url.url } };
+            }
+            return item;
+          })
+        };
+      } else {
+        return {
+          role: msg.role,
+          content: msg.content
+        };
+      }
+    });
 
     const {
       timeout, // Handled in getOpenAIInstance
@@ -151,10 +239,13 @@ export class LLMService implements ILLMService {
       ...restLlmParams
     } = modelConfig.llmParams || {};
 
+    // 处理 JSON 类型参数
+    const processedLlmParams = this.processJsonParams(restLlmParams);
+
     const completionConfig: any = {
       model: modelConfig.defaultModel,
       messages: formattedMessages,
-      ...restLlmParams // Spread other params from llmParams
+      ...processedLlmParams // Spread processed params from llmParams
     };
 
     try {
@@ -182,12 +273,19 @@ export class LLMService implements ILLMService {
         }
       }
 
+      // 使用我们的 token 计算方法计算输入 tokens
+      const calculatedInputTokens = this.calculateInputTokens(messages);
+      const calculatedOutputTokens = this.calculateTokens(content);
+      
       const result: LLMResponse = {
         content: content,
         reasoning: reasoning || undefined,
         metadata: {
           model: modelConfig.defaultModel,
-          finishReason: choice.finish_reason || undefined
+          finishReason: choice.finish_reason || undefined,
+          tokens: calculatedInputTokens + calculatedOutputTokens,
+          inputTokens: calculatedInputTokens,
+          outputTokens: calculatedOutputTokens
         }
       };
 
@@ -228,10 +326,14 @@ export class LLMService implements ILLMService {
     const chat = model.startChat(chatOptions);
 
     // 获取最后一条用户消息
-    const lastUserMessage = conversationMessages.length > 0 &&
+    const lastUserMessageContent = conversationMessages.length > 0 &&
       conversationMessages[conversationMessages.length - 1].role === 'user'
       ? conversationMessages[conversationMessages.length - 1].content
       : '';
+
+    const lastUserMessage = typeof lastUserMessageContent === 'string' 
+      ? lastUserMessageContent 
+      : this.formatGeminiParts(lastUserMessageContent)[0]?.text || '';
 
     // 如果没有用户消息，返回空响应
     if (!lastUserMessage) {
@@ -246,10 +348,18 @@ export class LLMService implements ILLMService {
     // 发送消息并获取响应
     const result = await chat.sendMessage(lastUserMessage);
     
+    // 计算输入 tokens（基于消息内容）
+    const calculatedInputTokens = this.calculateInputTokens(messages);
+    const responseContent = result.response.text();
+    const calculatedOutputTokens = this.calculateTokens(responseContent);
+    
     return {
-      content: result.response.text(),
+      content: responseContent,
       metadata: {
-        model: modelConfig.defaultModel
+        model: modelConfig.defaultModel,
+        tokens: calculatedInputTokens + calculatedOutputTokens,
+        inputTokens: calculatedInputTokens,
+        outputTokens: calculatedOutputTokens
       }
     };
   }
@@ -270,20 +380,44 @@ export class LLMService implements ILLMService {
 
     for (let i = 0; i < historyMessages.length; i++) {
       const msg = historyMessages[i];
+      const parts = this.formatGeminiParts(msg.content);
+      
       if (msg.role === 'user') {
         formattedHistory.push({
           role: 'user',
-          parts: [{ text: msg.content }]
+          parts
         });
       } else if (msg.role === 'assistant') {
         formattedHistory.push({
           role: 'model',
-          parts: [{ text: msg.content }]
+          parts
         });
       }
     }
 
     return formattedHistory;
+  }
+
+  /**
+   * 格式化 Gemini 的消息内容为 parts 数组
+   */
+  private formatGeminiParts(content: string | MessageContent[]): any[] {
+    if (typeof content === 'string') {
+      return [{ text: content }];
+    } else if (Array.isArray(content)) {
+      return content.map(item => {
+        if (item.type === 'text') {
+          return { text: item.text };
+        } else if (item.type === 'image_url') {
+          // Gemini 需要不同的图片格式，这里暂时不处理
+          // Gemini 的多模态支持需要单独实现
+          return { text: `[Image: ${item.image_url.url}]` };
+        }
+        return { text: String(item) };
+      });
+    } else {
+      return [{ text: String(content) }];
+    }
   }
 
   /**
@@ -340,10 +474,10 @@ export class LLMService implements ILLMService {
   async sendMessageStream(
     messages: Message[],
     provider: string,
-    callbacks: StreamHandlers
+    callbacks: StreamHandlers,
+    signal?: AbortSignal
   ): Promise<void> {
     try {
-      console.log('开始流式请求:', { provider, messagesCount: messages.length });
       this.validateMessages(messages);
 
       const modelConfig = await this.modelManager.getModel(provider);
@@ -359,10 +493,10 @@ export class LLMService implements ILLMService {
       });
 
       if (modelConfig.provider === 'gemini') {
-        await this.streamGeminiMessage(messages, modelConfig, callbacks);
+        await this.streamGeminiMessage(messages, modelConfig, callbacks, signal);
       } else {
         // OpenAI兼容格式的API，包括DeepSeek和自定义模型
-        await this.streamOpenAIMessage(messages, modelConfig, callbacks);
+        await this.streamOpenAIMessage(messages, modelConfig, callbacks, signal);
       }
     } catch (error) {
       console.error('流式请求失败:', error);
@@ -473,16 +607,39 @@ export class LLMService implements ILLMService {
   private async streamOpenAIMessage(
     messages: Message[],
     modelConfig: ModelConfig,
-    callbacks: StreamHandlers
+    callbacks: StreamHandlers,
+    signal?: AbortSignal
   ): Promise<void> {
     try {
       // 获取流式OpenAI实例
       const openai = this.getOpenAIInstance(modelConfig, true);
 
-      const formattedMessages = messages.map(msg => ({
-        role: msg.role,
-        content: msg.content
-      }));
+      const formattedMessages = messages.map(msg => {
+        if (typeof msg.content === 'string') {
+          return {
+            role: msg.role,
+            content: msg.content
+          };
+        } else if (Array.isArray(msg.content)) {
+          // 多模态内容，OpenAI格式
+          return {
+            role: msg.role,
+            content: msg.content.map(item => {
+              if (item.type === 'text') {
+                return { type: 'text', text: item.text };
+              } else if (item.type === 'image_url') {
+                return { type: 'image_url', image_url: { url: item.image_url.url } };
+              }
+              return item;
+            })
+          };
+        } else {
+          return {
+            role: msg.role,
+            content: msg.content
+          };
+        }
+      });
 
       console.log('开始创建流式请求...');
       const {
@@ -493,13 +650,16 @@ export class LLMService implements ILLMService {
         ...restLlmParams
       } = modelConfig.llmParams || {};
 
+      // 处理 JSON 类型参数
+      const processedLlmParams = this.processJsonParams(restLlmParams);
+
       const completionConfig: any = {
         model: modelConfig.defaultModel,
         messages: formattedMessages,
         stream: true, // Essential for streaming
-        ...restLlmParams // User-defined parameters from llmParams
+        ...processedLlmParams // User-defined parameters from llmParams
       };
-      
+
       // 直接使用流式响应，无需类型转换
       const stream = await openai.chat.completions.create(completionConfig);
 
@@ -508,11 +668,23 @@ export class LLMService implements ILLMService {
       // 使用类型断言来确保TypeScript知道这是流式响应
       let accumulatedReasoning = '';
       let accumulatedContent = '';
+      let inputTokens = 0; // 记录输入 tokens
+      let outputTokens = 0; // 记录输出 tokens
+      
+      // 在开始处理流之前计算输入 tokens
+      inputTokens = this.calculateInputTokens(messages);
+      console.log('[LLMService] 计算的输入 tokens:', inputTokens);
       
       // think标签状态跟踪
       const thinkState = { isInThinkMode: false, buffer: '' };
 
       for await (const chunk of stream as any) {
+        // 检查中断信号
+        if (signal?.aborted) {
+          console.log('[LLMService] OpenAI stream aborted');
+          return;
+        }
+        
         // 处理推理内容（SiliconFlow 等提供商在 delta 中提供 reasoning_content）
         const reasoningContent = chunk.choices[0]?.delta?.reasoning_content || '';
         if (reasoningContent) {
@@ -533,22 +705,47 @@ export class LLMService implements ILLMService {
           // 使用流式think标签处理
           this.processStreamContentWithThinkTags(content, callbacks, thinkState);
           
+          // 计算新增内容的 tokens
+          outputTokens += this.calculateTokens(content);
+          
           await new Promise(resolve => setTimeout(resolve, 10));
+        }
+
+        // 处理 tokens 使用量 - OpenAI 流式响应中的 usage 信息（如果存在）
+        if (chunk.usage) {
+          // 如果 API 提供了 usage 信息，使用 API 的值
+          console.log('[LLMService] 收到 API tokens 使用量:', chunk.usage);
+          // 注意：我们仍使用自己计算的值，因为更准确
         }
       }
 
-      console.log('流式响应完成');
+      console.log('流式响应完成，tokens 统计:', {
+        input: inputTokens,
+        output: outputTokens,
+        total: inputTokens + outputTokens
+      });
       
       // 构建完整响应
       const response: LLMResponse = {
         content: accumulatedContent,
         reasoning: accumulatedReasoning || undefined,
         metadata: {
-          model: modelConfig.defaultModel
+          model: modelConfig.defaultModel,
+          tokens: inputTokens + outputTokens,
+          inputTokens: inputTokens,
+          outputTokens: outputTokens
         }
       };
 
-      callbacks.onComplete(response);
+      console.log('[LLMService] callbacks.onComplete 类型:', typeof callbacks.onComplete);
+      if (callbacks.onComplete && typeof callbacks.onComplete === 'function') {
+        console.log('[LLMService] 调用 onComplete...');
+        callbacks.onComplete(response);
+        console.log('[LLMService] onComplete 调用完成');
+      } else {
+        console.log('[LLMService] onComplete 不是函数或不存在');
+      }
+      // callbacks.onComplete(response);
     } catch (error) {
       console.error('流式处理过程中出错:', error);
       callbacks.onError(error instanceof Error ? error : new Error(String(error)));
@@ -562,7 +759,8 @@ export class LLMService implements ILLMService {
   private async streamGeminiMessage(
     messages: Message[],
     modelConfig: ModelConfig,
-    callbacks: StreamHandlers
+    callbacks: StreamHandlers,
+    signal?: AbortSignal
   ): Promise<void> {
     // 提取系统消息
     const systemMessages = messages.filter(msg => msg.role === 'system');
@@ -588,10 +786,14 @@ export class LLMService implements ILLMService {
     const chat = model.startChat(chatOptions);
 
     // 获取最后一条用户消息
-    const lastUserMessage = conversationMessages.length > 0 &&
+    const lastUserMessageContent = conversationMessages.length > 0 &&
       conversationMessages[conversationMessages.length - 1].role === 'user'
       ? conversationMessages[conversationMessages.length - 1].content
       : '';
+
+    const lastUserMessage = typeof lastUserMessageContent === 'string' 
+      ? lastUserMessageContent 
+      : this.formatGeminiParts(lastUserMessageContent)[0]?.text || '';
 
     // 如果没有用户消息，发送空响应
     if (!lastUserMessage) {
@@ -613,24 +815,47 @@ export class LLMService implements ILLMService {
       console.log('成功获取到流式响应');
       
       let accumulatedContent = '';
+      let inputTokens = 0; // 记录输入 tokens
+      let outputTokens = 0; // 记录输出 tokens
+      
+      // 在开始处理流之前计算输入 tokens
+      inputTokens = this.calculateInputTokens(messages);
+      console.log('[LLMService] Gemini 计算的输入 tokens:', inputTokens);
 
       for await (const chunk of result.stream) {
+        // 检查中断信号
+        if (signal?.aborted) {
+          console.log('[LLMService] Gemini stream aborted');
+          return;
+        }
+        
         const text = chunk.text();
         if (text) {
           accumulatedContent += text;
           callbacks.onToken(text);
+          
+          // 计算新增内容的 tokens
+          outputTokens += this.calculateTokens(text);
+          
           // 添加小延迟，让UI有时间更新
           await new Promise(resolve => setTimeout(resolve, 10));
         }
       }
 
-      console.log('流式响应完成');
+      console.log('流式响应完成，tokens 统计:', {
+        input: inputTokens,
+        output: outputTokens,
+        total: inputTokens + outputTokens
+      });
       
       // 构建完整响应
       const response: LLMResponse = {
         content: accumulatedContent,
         metadata: {
-          model: modelConfig.defaultModel
+          model: modelConfig.defaultModel,
+          tokens: inputTokens + outputTokens,
+          inputTokens: inputTokens,
+          outputTokens: outputTokens
         }
       };
 
@@ -639,6 +864,24 @@ export class LLMService implements ILLMService {
       console.error('流式处理过程中出错:', error);
       callbacks.onError(error instanceof Error ? error : new Error(String(error)));
       throw error;
+    }
+  }
+
+  /**
+   * 检查提供商是否支持多模态
+   */
+  async supportsMultimodal(provider: string): Promise<boolean> {
+    try {
+      const modelConfig = await this.modelManager.getModel(provider);
+      if (!modelConfig) {
+        return false;
+      }
+      
+      // 目前支持多模态的提供商
+      const multimodalProviders = ['openai', 'deepseek', 'anthropic', 'cohere'];
+      return multimodalProviders.includes(modelConfig.provider);
+    } catch {
+      return false;
     }
   }
 
@@ -816,6 +1059,33 @@ export class LLMService implements ILLMService {
         { id: 'deepseek-coder', name: 'DeepSeek Coder' }
       ];
     }
+  }
+
+  /**
+   * 处理 JSON 类型参数
+   * 将字符串类型的 JSON 参数转换为对象
+   */
+  private processJsonParams(params: Record<string, any>): Record<string, any> {
+    const processedParams = { ...params };
+    
+    // 获取 thinking 参数定义以检查是否应该作为 JSON 处理
+    const thinkingDef = advancedParameterDefinitions.find(def => def.name === 'thinking');
+    
+    if (thinkingDef && params.thinking && typeof params.thinking === 'string') {
+      try {
+        // 尝试解析 JSON 字符串
+        const parsed = JSON.parse(params.thinking);
+        if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+          processedParams.thinking = parsed;
+        } else {
+          console.warn('thinking 参数解析后不是对象，保持原始字符串');
+        }
+      } catch (error) {
+        console.warn('thinking 参数 JSON 解析失败，保持原始字符串:', error);
+      }
+    }
+    
+    return processedParams;
   }
 
   /**

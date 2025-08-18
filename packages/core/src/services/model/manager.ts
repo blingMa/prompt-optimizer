@@ -84,6 +84,7 @@ export class ModelManager implements IModelManager {
                 defaultModel: existingModel.defaultModel !== undefined ? existingModel.defaultModel : defaultConfig.defaultModel,
                 apiKey: existingModel.apiKey || defaultConfig.apiKey,
                 enabled: existingModel.enabled !== undefined ? existingModel.enabled : defaultConfig.enabled,
+                baseURL: existingModel.baseURL !== undefined ? existingModel.baseURL : defaultConfig.baseURL,
                 // 保留用户的自定义 llmParams
                 llmParams: existingModel.llmParams || defaultConfig.llmParams
               };

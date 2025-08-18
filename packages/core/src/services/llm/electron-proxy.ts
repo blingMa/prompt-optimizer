@@ -16,6 +16,10 @@ export class ElectronLLMProxy implements ILLMService {
     this.electronAPI = window.electronAPI;
   }
 
+  async supportsMultimodal(provider: string): Promise<boolean> {
+    return this.electronAPI.llm.supportsMultimodal(provider);
+  }
+
   async testConnection(provider: string): Promise<void> {
     await this.electronAPI.llm.testConnection(provider);
   }
@@ -35,7 +39,8 @@ export class ElectronLLMProxy implements ILLMService {
   async sendMessageStream(
     messages: Message[],
     provider: string,
-    callbacks: StreamHandlers
+    callbacks: StreamHandlers,
+    signal?: AbortSignal
   ): Promise<void> {
     // 自动序列化，防止Vue响应式对象IPC传递错误
     const safeMessages = safeSerializeForIPC(messages);
@@ -48,7 +53,8 @@ export class ElectronLLMProxy implements ILLMService {
       onError: callbacks.onError
     };
 
-    await this.electronAPI.llm.sendMessageStream(safeMessages, provider, adaptedCallbacks);
+    // Electron环境下传递中断信号到主进程
+    await this.electronAPI.llm.sendMessageStream(safeMessages, provider, adaptedCallbacks, signal);
   }
 
   async fetchModelList(

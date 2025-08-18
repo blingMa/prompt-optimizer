@@ -7,7 +7,7 @@ export interface AdvancedParameterDefinition {
   labelKey: string; // i18n key for UI label, e.g., "params.temperature.label"
   descriptionKey: string; // i18n key for UI description, e.g., "params.temperature.description"
   
-  type: 'number' | 'string' | 'boolean' | 'integer';
+  type: 'number' | 'string' | 'boolean' | 'integer' | 'json';
   
   defaultValue?: any;
   
@@ -156,6 +156,15 @@ export const advancedParameterDefinitions: AdvancedParameterDefinition[] = [
     type: "string", // Special handling: array of strings but UI input as comma-separated string
     defaultValue: [], // Array of strings
     appliesToProviders: ["gemini"]
+  },
+  {
+    id: "common_thinking",
+    name: "thinking",
+    labelKey: "params.thinking.label",
+    descriptionKey: "params.thinking.description",
+    type: "json",
+    defaultValue: {"type": "auto"},
+    appliesToProviders: ["openai", "gemini", "deepseek", "custom", "zhipu", "siliconflow"]
   },
   // Add more definitions as needed for other parameters and providers.
   // For example, Zhipu specific parameters, Groq, Anthropic etc.

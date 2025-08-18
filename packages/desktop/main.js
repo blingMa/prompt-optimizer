@@ -33,6 +33,10 @@ const envPath = path.join(__dirname, '.env');
 require('dotenv').config({ path: envLocalPath });
 require('dotenv').config({ path: envPath });
 
+// 调试：检查环境变量加载情况
+console.log('Desktop App Environment Loading:')
+console.log('envLocalPath:', envLocalPath)
+console.log('envPath:', envPath)
 
 const {
   PreferenceService,
@@ -43,6 +47,7 @@ const {
   createPromptService,
   createTemplateLanguageService,
   createDataManager,
+  createSettingsManager,
   FileStorageProvider,
 } = require('@prompt-optimizer/core');
 
@@ -73,7 +78,8 @@ function safeSerialize(obj) {
 }
 
 let mainWindow;
-let modelManager, templateManager, historyManager, llmService, promptService, templateLanguageService, preferenceService, dataManager;
+let activeStreams = new Map();
+let modelManager, templateManager, historyManager, llmService, promptService, templateLanguageService, preferenceService, dataManager, settingsManager;
 let storageProvider; // 全局存储提供器引用，用于退出时保存数据
 let isQuitting = false; // 防止重复保存数据的标志
 let isUpdaterQuitting = false; // 标识是否为更新安装退出，跳过数据保存
@@ -98,6 +104,122 @@ async function initializePreferenceService(storageProvider) {
   console.log('[DESKTOP] Initializing PreferenceService with the provided storage provider...');
   preferenceService = new PreferenceService(storageProvider);
   console.log('[DESKTOP] PreferenceService initialized.');
+}
+
+async function initializeSettingsService(storageProvider) {
+  console.log('[DESKTOP] Initializing SettingsService with the provided storage provider...');
+  settingsManager = createSettingsManager(storageProvider);
+  console.log('[DESKTOP] SettingsService initialized.');
+}
+
+function setupSettingsHandlers() {
+  ipcMain.handle('settings-saveSetting', async (event, setting) => {
+    try {
+      // 清理Vue响应式对象，防止IPC序列化错误
+      const safeSetting = safeSerialize(setting);
+      await settingsManager.saveSetting(safeSetting);
+      return createSuccessResponse(null);
+    } catch (error) {
+      return createErrorResponse(error);
+    }
+  });
+
+  ipcMain.handle('settings-getSettings', async (event) => {
+    try {
+      const result = await settingsManager.getSettings();
+      return createSuccessResponse(result);
+    } catch (error) {
+      return createErrorResponse(error);
+    }
+  });
+
+  ipcMain.handle('settings-getSetting', async (event) => {
+    try {
+      const result = await settingsManager.getSetting();
+      return createSuccessResponse(result);
+    } catch (error) {
+      return createErrorResponse(error);
+    }
+  });
+
+  ipcMain.handle('settings-updateSetting', async (event, updates) => {
+    try {
+      // 清理Vue响应式对象，防止IPC序列化错误
+      const safeUpdates = safeSerialize(updates);
+      await settingsManager.updateSetting(safeUpdates);
+      return createSuccessResponse(null);
+    } catch (error) {
+      return createErrorResponse(error);
+    }
+  });
+
+  ipcMain.handle('settings-testSetting', async (event) => {
+    try {
+      const result = await settingsManager.testSetting();
+      return createSuccessResponse(result);
+    } catch (error) {
+      return createErrorResponse(error);
+    }
+  });
+
+  ipcMain.handle('settings-getDefaultSetting', async (event) => {
+    try {
+      const result = await settingsManager.getDefaultSetting();
+      return createSuccessResponse(result);
+    } catch (error) {
+      return createErrorResponse(error);
+    }
+  });
+
+  ipcMain.handle('settings-resetToDefault', async (event) => {
+    try {
+      await settingsManager.resetToDefault();
+      return createSuccessResponse(null);
+    } catch (error) {
+      return createErrorResponse(error);
+    }
+  });
+
+  // Settings Import/Export Data handlers
+  ipcMain.handle('settings-exportData', async (event) => {
+    try {
+      const result = await settingsManager.exportData();
+      return createSuccessResponse(result);
+    } catch (error) {
+      return createErrorResponse(error);
+    }
+  });
+
+  ipcMain.handle('settings-importData', async (event, data) => {
+    try {
+      // 清理Vue响应式对象，防止IPC序列化错误
+      const safeData = safeSerialize(data);
+      await settingsManager.importData(safeData);
+      return createSuccessResponse(null);
+    } catch (error) {
+      return createErrorResponse(error);
+    }
+  });
+
+  ipcMain.handle('settings-getDataType', async (event) => {
+    try {
+      const result = await settingsManager.getDataType();
+      return createSuccessResponse(result);
+    } catch (error) {
+      return createErrorResponse(error);
+    }
+  });
+
+  ipcMain.handle('settings-validateData', async (event, data) => {
+    try {
+      // 清理Vue响应式对象，防止IPC序列化错误
+      const safeData = safeSerialize(data);
+      const result = await settingsManager.validateData(safeData);
+      return createSuccessResponse(result);
+    } catch (error) {
+      return createErrorResponse(error);
+    }
+  });
 }
 
 function setupPreferenceHandlers() {
@@ -203,6 +325,7 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
       contextIsolation: true,
+      webSecurity: false
     },
   });
 
@@ -323,6 +446,7 @@ async function initializeServices() {
     storageProvider = new FileStorageProvider(userDataPath);
     
     await initializePreferenceService(storageProvider);
+    await initializeSettingsService(storageProvider);
     
     console.log('[DESKTOP] Creating model manager...');
     modelManager = createModelManager(storageProvider);
@@ -347,6 +471,9 @@ async function initializeServices() {
 
     console.log('[DESKTOP] Creating Prompt service...');
     promptService = createPromptService(modelManager, llmService, templateManager, historyManager);
+    
+    // 初始化流管理器
+    activeStreams = new Map();
     
     console.log('[DESKTOP] Creating Data manager...');
     dataManager = createDataManager(modelManager, templateManager, historyManager, preferenceService);
@@ -442,9 +569,19 @@ function createDetailedErrorResponse(error) {
 // --- High-Level IPC Service Handlers ---
 function setupIPC() {
   console.log('[Main Process] Setting up high-level service IPC handlers...');
+  setupSettingsHandlers();
   setupPreferenceHandlers();
   
   // LLM Service handlers
+  ipcMain.handle('llm-supportsMultimodal', async (event, provider) => {
+    try {
+      const result = await llmService.supportsMultimodal(provider);
+      return createSuccessResponse(result);
+    } catch (error) {
+      return createErrorResponse(error);
+    }
+  });
+
   ipcMain.handle('llm-testConnection', async (event, provider) => {
     try {
       await llmService.testConnection(provider);
@@ -456,6 +593,7 @@ function setupIPC() {
 
   ipcMain.handle('llm-sendMessage', async (event, messages, provider) => {
     try {
+      console.log('[Main Process] LLM Service: sendMessage called with messages:', messages);
       const result = await llmService.sendMessage(messages, provider);
       return createSuccessResponse(result);
     } catch (error) {
@@ -465,6 +603,7 @@ function setupIPC() {
 
   ipcMain.handle('llm-sendMessageStructured', async (event, messages, provider) => {
     try {
+      console.log('[Main Process] LLM Service: sendMessageStructured called with messages:', messages);
       const result = await llmService.sendMessageStructured(messages, provider);
       return createSuccessResponse(result);
     } catch (error) {
@@ -484,30 +623,55 @@ function setupIPC() {
   // Streaming handler - more complex due to callbacks
   ipcMain.handle('llm-sendMessageStream', async (event, messages, provider, streamId) => {
     try {
+      // 创建AbortController用于这个流
+      const abortController = new AbortController();
+      activeStreams.set(streamId, abortController);
+      
       const callbacks = {
         onContent: (content) => {
+          if (abortController.signal.aborted) return;
           if (mainWindow && !mainWindow.isDestroyed()) {
             event.sender.send(`stream-content-${streamId}`, content);
           }
         },
         onThinking: (thinking) => {
+          if (abortController.signal.aborted) return;
           if (mainWindow && !mainWindow.isDestroyed()) {
             event.sender.send(`stream-thinking-${streamId}`, thinking);
           }
         },
         onFinish: () => {
+          activeStreams.delete(streamId);
           if (mainWindow && !mainWindow.isDestroyed()) {
             event.sender.send(`stream-finish-${streamId}`);
           }
         },
         onError: (error) => {
+          activeStreams.delete(streamId);
           if (mainWindow && !mainWindow.isDestroyed()) {
             event.sender.send(`stream-error-${streamId}`, error.message);
           }
         }
       };
       
-      await llmService.sendMessageStream(messages, provider, callbacks);
+      await llmService.sendMessageStream(messages, provider, callbacks, abortController.signal);
+      activeStreams.delete(streamId);
+      return createSuccessResponse(null);
+    } catch (error) {
+      activeStreams.delete(streamId);
+      return createErrorResponse(error);
+    }
+  });
+  
+  // Abort stream handler
+  ipcMain.handle('llm-abortStream', async (event, streamId) => {
+    try {
+      const abortController = activeStreams.get(streamId);
+      if (abortController) {
+        abortController.abort();
+        activeStreams.delete(streamId);
+        console.log(`[Main Process] Stream ${streamId} aborted`);
+      }
       return createSuccessResponse(null);
     } catch (error) {
       return createErrorResponse(error);
@@ -572,9 +736,10 @@ function setupIPC() {
         window.webContents.send(`stream-reasoning-token-${streamId}`, token);
       }
     },
-    onComplete: () => {
+    onComplete: (response) => {
       if (window && !window.isDestroyed()) {
-        window.webContents.send(`stream-finish-${streamId}`);
+        // 传递响应对象，包含 metadata 和 token 信息
+        window.webContents.send(`stream-finish-${streamId}`, response);
       }
     },
     onError: (error) => {
@@ -606,10 +771,10 @@ function setupIPC() {
     }
   });
 
-  ipcMain.handle('prompt-testPromptStream', async (event, systemPrompt, userPrompt, modelKey, streamId) => {
+  ipcMain.handle('prompt-testPromptStream', async (event, systemPrompt, userPrompt, modelKey, streamId, images) => {
     const streamHandlers = createIpcStreamHandlers(mainWindow, streamId);
     try {
-      await promptService.testPromptStream(systemPrompt, userPrompt, modelKey, streamHandlers);
+      await promptService.testPromptStream(systemPrompt, userPrompt, modelKey, streamHandlers, images);
       return createSuccessResponse(null);
     } catch (error) {
       streamHandlers.onError(error);

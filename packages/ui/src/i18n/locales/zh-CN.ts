@@ -342,7 +342,9 @@ export default {
     model: '模型',
     startTest: '开始测试 →',
     startCompare: '开始对比 →',
+    stopTest: '停止',
     testing: '测试中...',
+    stopped: '测试已停止',
     toggleCompare: {
       enable: '开启对比',
       disable: '关闭对比'
@@ -351,6 +353,7 @@ export default {
     optimizedResult: '优化后提示词结果',
     testResult: '测试结果',
     userPromptTest: '用户提示词测试',
+    attachedImages: '附加图片',
     error: {
       failed: '测试失败',
       noModel: '请先选择测试模型',
@@ -358,7 +361,12 @@ export default {
     },
     enableMarkdown: '启用Markdown渲染',
     disableMarkdown: '关闭Markdown渲染',
-    thinking: '思考过程'
+    thinking: '思考过程',
+    tokensTooltip: '本次测试消耗了 {tokens} 个 tokens\n输入: {inputTokens} tokens\n输出: {outputTokens} tokens',
+    inputTokens: '输入',
+    outputTokens: '输出',
+    totalTokens: '总计',
+    tokens: 'tokens'
   },
   template: {
     noDescription: '暂无描述',
@@ -581,6 +589,10 @@ export default {
       "label": "停止序列",
       "description": "遇到时将停止输出生成的自定义字符串。用逗号分隔多个序列。"
     },
+    "thinking": {
+      "label": "思考控制",
+      "description": "控制模型是否进行思考。auto: 自动决定, enabled: 启用, disabled: 禁用"
+    },
     "tokens": {
       "unit": "令牌"
     }
@@ -645,5 +657,45 @@ export default {
     clickToCheck: '点击检查更新',
     noReleasesFound: '未找到发布版本。此项目可能尚未发布任何版本。',
     noStableReleasesFound: '未找到正式版本。可能只有预览版本可用。'
+  },
+  upload: {
+    dragDrop: '拖拽图片到这里或点击上传',
+    orClick: '或点击选择文件',
+    uploading: '上传中',
+    success: '文件 {fileName} 上传成功',
+    failed: '文件 {fileName} 上传失败: {error}',
+    invalidType: '文件 {fileName} 格式不支持',
+    fileTooLarge: '文件 {fileName} 超过大小限制',
+    tooManyFiles: '最多只能上传 {max} 个文件',
+    serviceNotInitialized: '上传服务未初始化',
+    copyUrl: '复制链接',
+    delete: '删除',
+    urlCopied: '链接已复制到剪贴板',
+    copyFailed: '复制失败',
+    deleteSuccess: '文件 {fileName} 删除成功',
+    deleteFailed: '文件 {fileName} 删除失败'
+  },
+  uploadSettings: {
+    title: '系统设置',
+    ossConfig: 'OSS配置',
+    region: '区域',
+    regionPlaceholder: '请输入OSS区域，如：oss-cn-hangzhou',
+    accessKeyId: '访问密钥ID',
+    accessKeyIdPlaceholder: '请输入AccessKey ID',
+    accessKeySecret: '访问密钥密码',
+    accessKeySecretPlaceholder: '请输入AccessKey Secret',
+    bucket: '存储桶',
+    bucketPlaceholder: '请输入Bucket名称',
+    endpoint: '终端节点',
+    endpointPlaceholder: '请输入Endpoint地址 如：https://oss-cn-hangzhou.aliyuncs.com',
+    secure: '使用HTTPS',
+    cname: '使用自定义域名',
+    requiredFields: '请填写所有必填字段',
+    test: '测试连接',
+    testing: '测试中...',
+    testSuccess: '连接测试成功',
+    testFailed: '连接测试失败: {error}',
+    saveSuccess: '设置保存成功',
+    reinitFailed: '重新初始化上传服务失败'
   }
 };

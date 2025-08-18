@@ -62,6 +62,16 @@ export * from './services/preference/types'
 export { ElectronPreferenceServiceProxy } from './services/preference/electron-proxy'
 export { PreferenceService, createPreferenceService } from './services/preference/service'
 
+// 导出设置管理服务相关
+export * from './services/settings/types'
+export * from './services/settings/errors'
+export { SettingsManager, createSettingsManager } from './services/settings/manager'
+export { ElectronSettingsManagerProxy } from './services/settings/electron-proxy'
+
+// 导出上传服务相关
+export * from './services/upload/types'
+export { UploadService, createUploadService } from './services/upload/service'
+
 // 导出环境检测工具
 export { isRunningInElectron, isElectronApiReady, waitForElectronApi, checkVercelApiAvailability, resetVercelStatusCache, isBrowser, getProxyUrl } from './utils/environment'
 

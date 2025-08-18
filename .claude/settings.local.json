@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(echo $USERPROFILE)",
+      "Bash(pnpm build:core:*)",
+      "Bash(pnpm add:*)",
+      "Bash(pnpm build:*)",
+      "Bash(node:*)",
+      "Bash(grep:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

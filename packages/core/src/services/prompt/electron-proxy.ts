@@ -71,9 +71,9 @@ export class ElectronPromptServiceProxy implements IPromptService {
 
     const tokenHandler = (token: string) => callbacks.onToken(token);
     const reasoningTokenHandler = (token: string) => callbacks.onReasoningToken?.(token);
-    const finishHandler = () => {
+    const finishHandler = (response?: any) => {
       cleanup();
-      callbacks.onComplete();
+      callbacks.onComplete(response);
     };
     const errorHandler = (error: string) => {
       cleanup();
@@ -112,9 +112,9 @@ export class ElectronPromptServiceProxy implements IPromptService {
 
     const tokenHandler = (token: string) => callbacks.onToken(token);
     const reasoningTokenHandler = (token: string) => callbacks.onReasoningToken?.(token);
-    const finishHandler = () => {
+    const finishHandler = (response?: any) => {
       cleanup();
-      callbacks.onComplete();
+      callbacks.onComplete(response);
     };
     const errorHandler = (error: string) => {
       cleanup();
@@ -145,17 +145,26 @@ export class ElectronPromptServiceProxy implements IPromptService {
     systemPrompt: string,
     userPrompt: string,
     modelKey: string,
-    callbacks: StreamHandlers
+    callbacks: StreamHandlers,
+    images?: { url: string; name?: string }[],
+    signal?: AbortSignal
   ): Promise<void> {
     const streamId = `test-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
 
-    const tokenHandler = (token: string) => callbacks.onToken(token);
-    const reasoningTokenHandler = (token: string) => callbacks.onReasoningToken?.(token);
-    const finishHandler = () => {
+    const tokenHandler = (token: string) => {
+      if (signal?.aborted) return
+      callbacks.onToken(token)
+    };
+    const reasoningTokenHandler = (token: string) => {
+      if (signal?.aborted) return
+      callbacks.onReasoningToken?.(token)
+    };
+    const finishHandler = (response?: any) => {
       cleanup();
-      callbacks.onComplete();
+      callbacks.onComplete(response);
     };
     const errorHandler = (error: string) => {
+      if (signal?.aborted) return
       cleanup();
       callbacks.onError(new Error(error));
     };
@@ -172,8 +181,15 @@ export class ElectronPromptServiceProxy implements IPromptService {
     this.ipc.on(`stream-finish-${streamId}`, finishHandler);
     this.ipc.on(`stream-error-${streamId}`, errorHandler);
 
+    // 监听中断信号
+    if (signal) {
+      signal.addEventListener('abort', () => {
+        cleanup();
+      });
+    }
+
     try {
-      await this.api.testPromptStream(systemPrompt, userPrompt, modelKey, streamId);
+      await this.api.testPromptStream(systemPrompt, userPrompt, modelKey, streamId, images, signal);
     } catch (error) {
       cleanup();
       callbacks.onError(error as Error);

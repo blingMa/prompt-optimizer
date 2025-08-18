@@ -62,12 +62,14 @@ export interface IPromptService {
     templateId: string
   ): Promise<void>;
 
-  /** 测试提示词（流式）- 支持可选系统提示词 */
+  /** 测试提示词（流式）- 支持可选系统提示词、图片和中断信号 */
   testPromptStream(
     systemPrompt: string,
     userPrompt: string,
     modelKey: string,
-    callbacks: StreamHandlers
+    callbacks: StreamHandlers,
+    images?: { url: string; name?: string }[],
+    signal?: AbortSignal
   ): Promise<void>;
 }
 

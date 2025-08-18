@@ -6,7 +6,8 @@ import type {
   ILLMService,
   IPromptService,
   ITemplateLanguageService,
-  ICompareService
+  ICompareService,
+  IStorageProvider
 } from '@prompt-optimizer/core'
 
 // FIXME: Temporary workaround for build issue. Should be imported from @prompt-optimizer/core

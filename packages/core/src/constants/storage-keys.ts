@@ -10,6 +10,7 @@ export const CORE_SERVICE_KEYS = {
   MODELS: 'models', // 模型配置存储键
   USER_TEMPLATES: 'user-templates', // 用户模板存储键
   PROMPT_HISTORY: 'prompt_history', // 提示词历史记录存储键
+  SETTINGS: 'settings', // 设置配置存储键
 } as const
 
 // UI设置相关

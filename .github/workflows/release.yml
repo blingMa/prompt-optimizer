@@ -103,8 +103,6 @@ jobs:
         run: pnpm install
 
       - name: 构建 Desktop 应用
-        env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN_FOR_UPDATER }}
         run: pnpm build:desktop
 
       - name: 验证构建产物
@@ -223,8 +221,6 @@ jobs:
         run: pnpm install
 
       - name: 构建 Desktop 应用
-        env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN_FOR_UPDATER }}
         run: pnpm build:desktop
 
       - name: 验证构建产物

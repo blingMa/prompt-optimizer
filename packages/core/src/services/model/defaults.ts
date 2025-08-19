@@ -45,7 +45,6 @@ const getEnvVar = (key: string): string => {
 const OPENAI_API_KEY = getEnvVar('VITE_OPENAI_API_KEY').trim();
 const GEMINI_API_KEY = getEnvVar('VITE_GEMINI_API_KEY').trim();
 const DEEPSEEK_API_KEY = getEnvVar('VITE_DEEPSEEK_API_KEY').trim();
-const SILICONFLOW_API_KEY = getEnvVar('VITE_SILICONFLOW_API_KEY').trim();
 const ZHIPU_API_KEY = getEnvVar('VITE_ZHIPU_API_KEY').trim();
 const CUSTOM_API_KEY = getEnvVar('VITE_CUSTOM_API_KEY').trim();
 const CUSTOM_API_BASE_URL = getEnvVar('VITE_CUSTOM_API_BASE_URL');
@@ -82,17 +81,6 @@ export const defaultModels: Record<string, ModelConfig> = {
     apiKey: DEEPSEEK_API_KEY,
     enabled: !!DEEPSEEK_API_KEY,
     provider: 'deepseek',
-    llmParams: {
-    }
-  },
-  siliconflow: {
-    name: 'SiliconFlow',
-    baseURL: 'https://api.siliconflow.cn/v1',
-    models: ['Qwen/Qwen3-8B'],
-    defaultModel: 'Qwen/Qwen3-8B',
-    apiKey: SILICONFLOW_API_KEY,
-    enabled: !!SILICONFLOW_API_KEY,
-    provider: 'siliconflow',
     llmParams: {
     }
   },

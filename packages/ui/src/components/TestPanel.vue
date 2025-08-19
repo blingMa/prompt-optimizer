@@ -45,7 +45,7 @@
 
         <!-- 图片上传区域 - 系统提示词优化模式 -->
         <div v-if="optimizationMode === 'system'" class="mt-4">
-          <div v-if="uploadService && isUploadServiceInitialized">
+          <div v-if="uploadInitialized">
             <ImageUpload
               :upload-service="uploadService"
               :disabled="isTesting"
@@ -101,7 +101,7 @@
           </div>
           
           <!-- 图片上传区域 - 用户提示词优化模式 -->
-          <div v-if="uploadService && isUploadServiceInitialized">
+          <div v-if="uploadInitialized">
             <ImageUpload
               :upload-service="uploadService"
               :disabled="isTesting"
@@ -254,6 +254,7 @@ const isCompareMode = ref(true)
 const testModelSelect = ref(null)
 const selectedTestModel = ref(props.modelValue || '')
 const uploadedImages = ref([])
+const uploadInitialized = ref(false)
 
 // 监听对比模式变化，在切换时清理状态
 watch(isCompareMode, (newValue, oldValue) => {
@@ -263,8 +264,7 @@ watch(isCompareMode, (newValue, oldValue) => {
   // 如果正在测试，先停止当前测试
   if (isTesting.value && abortController.value) {
     abortController.value.abort()
-    console.log('[TestPanel] Test aborted due to mode switch')
-    
+
     // 重置测试状态
     isTestingOriginal.value = false
     isTestingOptimized.value = false
@@ -292,16 +292,10 @@ const isUploadServiceInitialized = computed(() => {
 
 // 监控uploadService的变化
 watch(() => props.uploadService, (newUploadService) => {
-  console.log('[TestPanel] Upload service changed:', {
-    hasService: !!newUploadService,
-    isInitialized: newUploadService ? newUploadService.isInitialized() : false,
-    config: newUploadService ? newUploadService.getConfig() : null
-  })
 }, {immediate: true})
 
 // 监控uploadService初始化状态的变化
 watch(isUploadServiceInitialized, (isInitialized) => {
-  console.log('[TestPanel] Upload service initialization state changed:', isInitialized)
 }, {immediate: true})
 
 const updateSelectedModel = (value) => {
@@ -380,18 +374,10 @@ const testOriginalPrompt = async (signal) => {
       },
       onComplete: (response) => { 
         /* 流结束后不再需要设置 isTesting, 由 finally 处理 */
-        console.log('[TestPanel] 原始测试收到 onComplete 响应:', response);
         if (response?.metadata?.tokens) {
           originalTestTokens.value = response.metadata.tokens
           originalTestInputTokens.value = response.metadata.inputTokens || 0
           originalTestOutputTokens.value = response.metadata.outputTokens || 0
-          console.log('[TestPanel] 设置原始测试 tokens:', {
-            total: response.metadata.tokens,
-            input: response.metadata.inputTokens,
-            output: response.metadata.outputTokens
-          });
-        } else {
-          console.log('[TestPanel] 原始测试响应中没有 tokens 信息，response:', JSON.stringify(response));
         }
       },
       onError: (err) => {
@@ -487,13 +473,6 @@ const testOptimizedPrompt = async (signal) => {
           optimizedTestTokens.value = response.metadata.tokens
           optimizedTestInputTokens.value = response.metadata.inputTokens || 0
           optimizedTestOutputTokens.value = response.metadata.outputTokens || 0
-          console.log('[TestPanel] 设置优化测试 tokens:', {
-            total: response.metadata.tokens,
-            input: response.metadata.inputTokens,
-            output: response.metadata.outputTokens
-          });
-        } else {
-          console.log('[TestPanel] 优化测试响应中没有 tokens 信息，response:', JSON.stringify(response));
         }
       },
       onError: (err) => {
@@ -553,8 +532,7 @@ const testOptimizedPrompt = async (signal) => {
 const handleStopTest = () => {
   if (abortController.value) {
     abortController.value.abort()
-    console.log('[TestPanel] Test aborted by user')
-    
+
     // 稍微延迟重置状态，让测试函数有时间处理中断
     setTimeout(() => {
       isTestingOriginal.value = false
@@ -571,8 +549,7 @@ const handleTest = async () => {
   // 如果已经有活跃的测试，先停止它
   if (isTesting.value && abortController.value) {
     abortController.value.abort()
-    console.log('[TestPanel] Stopping existing test before starting new one')
-    
+
     // 等待状态清理
     await new Promise(resolve => setTimeout(resolve, 100))
     
@@ -709,16 +686,6 @@ const checkMultimodalSupport = async (modelKey) => {
   }
 }
 
-// 调试函数
-const debugUploadService = () => {
-  console.log('TestPanel upload service debug:', {
-    hasUploadService: !!props.uploadService,
-    isInitialized: props.uploadService ? props.uploadService.isInitialized() : false,
-    config: props.uploadService ? props.uploadService.getConfig() : null,
-    optimizationMode: props.optimizationMode
-  })
-}
-
 onMounted(() => {
   if (props.modelValue) {
     selectedTestModel.value = props.modelValue
@@ -726,7 +693,7 @@ onMounted(() => {
   
   // 调试上传服务
   setTimeout(() => {
-    debugUploadService()
+    uploadInitialized.value = props.uploadService ? props.uploadService.isInitialized() : false
   }, 1000)
 })
 

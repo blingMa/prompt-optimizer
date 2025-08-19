@@ -261,6 +261,19 @@
                             </div>
                           </template>
                           
+                          <!-- JSON 类型 -->
+                          <template v-else-if="getParamMetadata(key)?.type === 'json'">
+                            <div class="space-y-2">
+                              <textarea v-model="currentLLMParams[key]" 
+                                        rows="1"
+                                        class="theme-manager-input w-full text-sm font-mono text-xs" 
+                                        :placeholder="getParamMetadata(key)?.defaultValue !== undefined ? JSON.stringify(getParamMetadata(key)?.defaultValue, null, 2) : ''" />
+                              <p class="text-xs theme-manager-text-secondary">
+                                {{ t('modelManager.advancedParameters.jsonPlaceholder') }}
+                              </p>
+                            </div>
+                          </template>
+                          
                           <!-- String 类型 -->
                           <template v-else>
                             <input v-model="currentLLMParams[key]" 
@@ -450,6 +463,19 @@
                               <div v-if="isParamInvalid(key, currentLLMParams[key])" class="text-red-500 text-xs">
                                 {{ getParamValidationMessage(key, currentLLMParams[key]) }}
                               </div>
+                            </div>
+                          </template>
+                          
+                          <!-- JSON 类型 -->
+                          <template v-else-if="getParamMetadata(key)?.type === 'json'">
+                            <div class="space-y-2">
+                              <textarea v-model="currentLLMParams[key]" 
+                                        rows="1"
+                                        class="theme-manager-input w-full text-sm font-mono text-xs" 
+                                        :placeholder="getParamMetadata(key)?.defaultValue !== undefined ? JSON.stringify(getParamMetadata(key)?.defaultValue, null, 2) : ''" />
+                              <p class="text-xs theme-manager-text-secondary">
+                                {{ t('modelManager.advancedParameters.jsonPlaceholder') }}
+                              </p>
                             </div>
                           </template>
                           
@@ -1114,6 +1140,9 @@ const quickAddLLMParam = () => {
         val = parseInt(String(val), 10);
       } else if (definition.type === 'number' && val !== undefined) {
         val = parseFloat(String(val));
+      } else if (definition.type === 'json' && typeof val === 'object') {
+        // 对于JSON类型，将对象转换为字符串以便在输入框中显示
+        val = JSON.stringify(val);
       } else if (definition.name === 'stopSequences') { // Special handling for stopSequences
          val = Array.isArray(val) ? val : ( (typeof val === 'string' && val) ? val.split(',').map(s => s.trim()).filter(s => s) : [] );
       }

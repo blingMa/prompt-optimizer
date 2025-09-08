@@ -144,7 +144,7 @@ export default {
       customKeyPlaceholder: 'Enter parameter name',
       customValuePlaceholder: 'Enter parameter value',
       stopSequencesPlaceholder: 'Enter stop sequences (comma-separated)',
-      jsonPlaceholder: 'Enter valid JSON object, e.g.: {"type": "auto"}',
+      jsonPlaceholder: 'Enter valid JSON object',
       unitLabel: 'Unit',
       currentProvider: 'Current Provider',
       customProvider: 'Custom',

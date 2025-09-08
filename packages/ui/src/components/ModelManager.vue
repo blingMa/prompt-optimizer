@@ -265,11 +265,15 @@
                           <template v-else-if="getParamMetadata(key)?.type === 'json'">
                             <div class="space-y-2">
                               <textarea v-model="currentLLMParams[key]" 
+                                        @input="handleJsonInput(key, $event)"
                                         rows="1"
                                         class="theme-manager-input w-full text-sm font-mono text-xs" 
+                                        :class="{ 'border-red-500': isJsonInvalid(key) }"
                                         :placeholder="getParamMetadata(key)?.defaultValue !== undefined ? JSON.stringify(getParamMetadata(key)?.defaultValue, null, 2) : ''" />
-                              <p class="text-xs theme-manager-text-secondary">
-                                {{ t('modelManager.advancedParameters.jsonPlaceholder') }}
+                              <p class="text-xs theme-manager-text-secondary" v-text="t('modelManager.advancedParameters.jsonPlaceholder')">
+                              </p>
+                              <p v-if="isJsonInvalid(key)" class="text-red-500 text-xs">
+                                {{ t('modelManager.advancedParameters.invalidJson') }}
                               </p>
                             </div>
                           </template>
@@ -470,11 +474,15 @@
                           <template v-else-if="getParamMetadata(key)?.type === 'json'">
                             <div class="space-y-2">
                               <textarea v-model="currentLLMParams[key]" 
+                                        @input="handleJsonInput(key, $event)"
                                         rows="1"
                                         class="theme-manager-input w-full text-sm font-mono text-xs" 
+                                        :class="{ 'border-red-500': isJsonInvalid(key) }"
                                         :placeholder="getParamMetadata(key)?.defaultValue !== undefined ? JSON.stringify(getParamMetadata(key)?.defaultValue, null, 2) : ''" />
-                              <p class="text-xs theme-manager-text-secondary">
-                                {{ t('modelManager.advancedParameters.jsonPlaceholder') }}
+                              <p class="text-xs theme-manager-text-secondary" v-text="t('modelManager.advancedParameters.jsonPlaceholder')">
+                              </p>
+                              <p v-if="isJsonInvalid(key)" class="text-red-500 text-xs">
+                                {{ t('modelManager.advancedParameters.invalidJson') }}
                               </p>
                             </div>
                           </template>
@@ -969,6 +977,19 @@ const saveEdit = async () => {
       throw new Error('编辑会话无效');
     }
     
+    // 验证所有JSON参数
+    for (const [key, value] of Object.entries(editingModel.value.llmParams || {})) {
+      const metadata = getParamMetadata(key);
+      if (metadata?.type === 'json' && value) {
+        try {
+          JSON.parse(value);
+        } catch (error) {
+          toast.error(t('modelManager.advancedParameters.invalidJson'));
+          return;
+        }
+      }
+    }
+    
     const originalKey = editingModel.value.originalKey;
     
     // 创建更新配置对象，ElectronProxy会自动处理序列化
@@ -1016,6 +1037,19 @@ const saveEdit = async () => {
 // 添加自定义模型
 const addCustomModel = async () => {
   try {
+    // 验证所有JSON参数
+    for (const [key, value] of Object.entries(newModel.value.llmParams || {})) {
+      const metadata = getParamMetadata(key);
+      if (metadata?.type === 'json' && value) {
+        try {
+          JSON.parse(value);
+        } catch (error) {
+          toast.error(t('modelManager.advancedParameters.invalidJson'));
+          return;
+        }
+      }
+    }
+    
     // ElectronProxy会自动处理序列化
     const config = {
       name: newModel.value.name,
@@ -1172,6 +1206,37 @@ const handleCustomParamAdd = () => {
 const cancelCustomParam = () => {
   selectedNewLLMParamId.value = '';
   customLLMParam.value = { key: '', value: '' };
+};
+
+// =============== JSON 参数验证 ===============
+// JSON 参数验证状态
+const jsonValidationErrors = ref({});
+
+// 验证 JSON 参数是否有效
+const isJsonInvalid = (key) => {
+  return !!jsonValidationErrors.value[key];
+};
+
+// 处理 JSON 输入
+const handleJsonInput = (key, event) => {
+  const target = event.target;
+  const value = target.value.trim();
+  
+  // 如果为空，清除错误状态
+  if (!value) {
+    delete jsonValidationErrors.value[key];
+    return;
+  }
+  
+  try {
+    // 尝试解析 JSON
+    JSON.parse(value);
+    // 解析成功，清除错误状态
+    delete jsonValidationErrors.value[key];
+  } catch (error) {
+    // 解析失败，设置错误状态
+    jsonValidationErrors.value[key] = error.message;
+  }
 };
 
 // 验证参数是否有效

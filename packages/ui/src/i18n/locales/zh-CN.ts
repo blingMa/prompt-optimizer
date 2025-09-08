@@ -144,7 +144,7 @@ export default {
       customKeyPlaceholder: '输入参数名称',
       customValuePlaceholder: '输入参数值',
       stopSequencesPlaceholder: '输入停止序列（逗号分隔）',
-      jsonPlaceholder: '输入有效的JSON对象，例如: {"type": "auto"}',
+      jsonPlaceholder: '输入有效的JSON对象',
       unitLabel: '单位',
       currentProvider: '当前提供商',
       customProvider: '自定义',
